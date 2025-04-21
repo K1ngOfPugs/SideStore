@@ -1,5 +1,6 @@
 name: Alpha SideStore build
 on:
+  workflow_dispatch:
   push:
     branches:
       - develop-alpha
