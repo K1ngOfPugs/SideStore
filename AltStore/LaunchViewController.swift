@@ -8,6 +8,7 @@
 
 import UIKit
 import Roxas
+import EmotionalDamage
 import minimuxer
 import WidgetKit
 
@@ -87,6 +88,7 @@ final class LaunchViewController: RSTLaunchViewController, UIDocumentPickerDeleg
         
         
         #if !targetEnvironment(simulator)
+        start_em_proxy(bind_addr: Consts.Proxy.serverURL)
         
         guard let pf = fetchPairingFile() else {
             displayError("Device pairing file not found.")
@@ -211,32 +213,36 @@ final class LaunchViewController: RSTLaunchViewController, UIDocumentPickerDeleg
     }
     
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        let url = urls[0]
-        let isSecuredURL = url.startAccessingSecurityScopedResource() == true
+        // Load static pairing file from app bundle
+        guard let url = Bundle.main.url(forResource: "pairing", withExtension: "txt") else {
+            displayError("Missing static pairing file")
+            controller.dismiss(animated: true, completion: nil)
+            return
+        }
 
         do {
-            // Read to a string
-            let data1 = try Data(contentsOf: urls[0])
-            let pairing_string = String(bytes: data1, encoding: .utf8)
-            if pairing_string == nil {
-                displayError("Unable to read pairing file")
+            let data = try Data(contentsOf: url)
+            guard let pairingString = String(data: data, encoding: .utf8) else {
+                displayError("Unable to decode pairing file")
+                controller.dismiss(animated: true, completion: nil)
+                return
             }
-            
-            // Save to a file for next launch
-            let pairingFile = FileManager.default.documentsDirectory.appendingPathComponent("\(pairingFileName)")
-            try pairing_string?.write(to: pairingFile, atomically: true, encoding: String.Encoding.utf8)
-            
+
+            // Save to a file for next launch (Documents directory)
+            let pairingFile = FileManager.default.documentsDirectory.appendingPathComponent(pairingFileName)
+            try pairingString.write(to: pairingFile, atomically: true, encoding: .utf8)
+
             // Start minimuxer now that we have a file
-            start_minimuxer_threads(pairing_string!)
+            start_minimuxer_threads(pairingString)
+
         } catch {
-            displayError("Unable to read pairing file")
+            displayError("Failed to load pairing file: \(error.localizedDescription)")
         }
-        
-        if (isSecuredURL) {
-            url.stopAccessingSecurityScopedResource()
-        }
+
+        // Still dismiss the picker for UI consistency (even though it's not used)
         controller.dismiss(animated: true, completion: nil)
     }
+
     
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
         displayError("Choosing a pairing file was cancelled. Please re-open the app and try again.")
@@ -253,7 +259,13 @@ final class LaunchViewController: RSTLaunchViewController, UIDocumentPickerDeleg
             try! FileManager.default.removeItem(at: FileManager.default.documentsDirectory.appendingPathComponent("\(pairingFileName)"))
             displayError("minimuxer failed to start, please restart SideStore. \((error as? LocalizedError)?.failureReason ?? "UNKNOWN ERROR!!!!!! REPORT TO GITHUB ISSUES!")")
         }
-        start_auto_mounter(documentsDirectory)
+        if #available(iOS 17, *) {
+            // TODO: iOS 17 and above have a new JIT implementation that is completely broken in SideStore :(
+        }
+        else {
+            start_auto_mounter(documentsDirectory)
+        }
+        
         // Create destinationViewController now so view controllers can register for receiving Notifications.
         self.destinationViewController = self.storyboard!.instantiateViewController(withIdentifier: "tabBarController") as? TabBarController
     }

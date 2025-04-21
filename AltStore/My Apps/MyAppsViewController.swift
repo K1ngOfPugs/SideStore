@@ -166,10 +166,8 @@ class MyAppsViewController: UICollectionViewController, PeekPopPreviewing
     @IBAction func unwindToMyAppsViewController(_ segue: UIStoryboardSegue)
     {
     }
-
     var minimuxerStatus: Bool {
-        // added isMinimuxerStatusCheckEnabled to forcefully ignore minimuxer status if status check is disabled in settings
-        guard !UserDefaults.standard.isMinimuxerStatusCheckEnabled || minimuxer.ready() else {
+        guard minimuxer.ready() else {
             ToastView(error: (OperationError.noWiFi as NSError).withLocalizedTitle("No WiFi or VPN!")).show(in: self)
             return false
         }
@@ -1485,6 +1483,15 @@ private extension MyAppsViewController
         
         if #unavailable(iOS 17), !sidejitenabled {
             guard minimuxerStatus else { return }
+        }
+        
+        if #available(iOS 17, *), !sidejitenabled {
+            let error = OperationError.tooNewError as NSError
+            let localizedError = error.withLocalizedTitle("No iOS 17 On Device JIT!")
+            
+            ToastView(error: localizedError, opensLog: true).show(in: self)
+            AppManager.shared.log(error, operation: .enableJIT, app: installedApp)
+            return
         }
         
         AppManager.shared.enableJIT(for: installedApp) { result in
